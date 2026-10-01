@@ -35,6 +35,13 @@ RISK_STYLES = {
     "CRITICO": (C.BOLD, C.RED),
 }
 
+RISK_HTML = {
+    "BAJO": "#27ae60",
+    "MEDIO": "#f1c40f",
+    "ALTO": "#e67e22",
+    "CRITICO": "#c0392b",
+}
+
 WIDTH = 70
 
 
@@ -52,8 +59,56 @@ def _kv(key, value, width=24):
         value = "-"
     elif isinstance(value, (list, dict)):
         value = str(value)
-    return f"   {key.ljust(width)}: {value}"
+    return f"   {str(key).ljust(width)}: {value}"
 
+
+def _wrap(text, width=62):
+    words, lines, current = text.split(), [], ""
+    for word in words:
+        if len(current) + len(word) + 1 > width:
+            lines.append(current)
+            current = word
+        else:
+            current = f"{current} {word}".strip()
+    if current:
+        lines.append(current)
+    return "\n        ".join(lines)
+
+
+def _findings_lines(hallazgos):
+    lines = []
+    if not hallazgos:
+        lines.append("   Sin hallazgos.")
+    for finding in hallazgos:
+        severity = finding["severity"]
+        styles = SEVERITY_STYLES.get(severity, ())
+        badge = paint(f"[{severity:<8}]", *styles)
+        title = paint(finding["title"], *styles) if styles else finding["title"]
+        lines.append(f"   {badge} {title}")
+        detail = finding["detail"]
+        if len(detail) > 100:
+            lines.append(f"        {_wrap(detail, width=WIDTH - 8)}")
+        else:
+            lines.append(f"        {detail}")
+    return lines
+
+
+def _risk_lines(riesgo):
+    styles = RISK_STYLES.get(riesgo["nivel"], ())
+    level_txt = paint(f"{riesgo['nivel']}", *styles)
+    score_txt = paint(f"{riesgo['puntuacion']}/100", *styles)
+    resumen = riesgo["resumen"]
+    parts = [f"{sev}: {resumen[sev]}" for sev in
+             ("CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO", "OK") if resumen.get(sev)]
+    lines = [
+        f"   Nivel de riesgo : {level_txt}",
+        f"   Puntuacion      : {score_txt}",
+        "   Detalle         : " + (", ".join(parts) if parts else "sin hallazgos"),
+    ]
+    return lines
+
+
+# ------------------------------------------------------------- consola URL
 
 def print_report(report, color=True):
     colors.set_enabled(color)
@@ -103,47 +158,46 @@ def print_report(report, color=True):
 
     hallazgos = report["hallazgos"]
     out.append(_section(f"HALLAZGOS ({len(hallazgos)})"))
-    if not hallazgos:
-        out.append("   Sin hallazgos.")
-    for finding in hallazgos:
-        severity = finding["severity"]
-        styles = SEVERITY_STYLES.get(severity, ())
-        badge = paint(f"[{severity:<8}]", *styles)
-        title = paint(finding["title"], *styles) if styles else finding["title"]
-        out.append(f"   {badge} {title}")
-        detail = finding["detail"]
-        if len(detail) > 100:
-            wrapped = _wrap(detail, width=WIDTH - 8)
-            out.append(f"        {wrapped}")
-        else:
-            out.append(f"        {detail}")
+    out.extend(_findings_lines(hallazgos))
 
-    riesgo = report["riesgo"]
     out.append(_section("EVALUACION DE RIESGO"))
-    styles = RISK_STYLES.get(riesgo["nivel"], ())
-    level_txt = paint(f"{riesgo['nivel']}", *styles)
-    score_txt = paint(f"{riesgo['puntuacion']}/100", *styles)
-    out.append(f"   Nivel de riesgo : {level_txt}")
-    out.append(f"   Puntuacion      : {score_txt}")
-    resumen = riesgo["resumen"]
-    parts = [f"{sev}: {resumen[sev]}" for sev in
-             ("CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO", "OK") if resumen.get(sev)]
-    out.append("   Detalle         : " + (", ".join(parts) if parts else "sin hallazgos"))
+    out.extend(_risk_lines(report["riesgo"]))
     out.append("=" * WIDTH)
     return "\n".join(out)
 
 
-def _wrap(text, width=62):
-    words, lines, current = text.split(), [], ""
-    for word in words:
-        if len(current) + len(word) + 1 > width:
-            lines.append(current)
-            current = word
-        else:
-            current = f"{current} {word}".strip()
-    if current:
-        lines.append(current)
-    return "\n        ".join(lines)
+# ---------------------------------------------------------- consola escaneo
+
+def print_scan_report(report, color=True):
+    colors.set_enabled(color)
+    out = []
+    out.append(_header(f" {report['tool']} v{report['version']} | {report['modulo']}"))
+    out.append(_kv("Objetivo", report["objetivo"]))
+    out.append(_kv("Fecha", report["fecha_analisis"].replace("T", " ").split(".")[0]))
+    out.append(_kv("Modo", report["modo"]))
+
+    out.append(_section("RESUMEN"))
+    for key, value in report.get("resumen", []):
+        out.append(_kv(key, value))
+
+    abiertos = report.get("puertos_abiertos", [])
+    out.append(_section(f"PUERTOS ABIERTOS ({len(abiertos)})"))
+    if not abiertos:
+        out.append("   Ninguno en el rango escaneado.")
+    else:
+        out.append(f"   {'PUERTO':>6}  {'SERVICIO':<18} BANNER")
+        for entry in abiertos:
+            banner = entry.get("banner") or "-"
+            out.append(f"   {entry['puerto']:>6}  {entry['servicio']:<18} {banner}")
+
+    hallazgos = report["hallazgos"]
+    out.append(_section(f"HALLAZGOS ({len(hallazgos)})"))
+    out.extend(_findings_lines(hallazgos))
+
+    out.append(_section("EVALUACION DE RIESGO"))
+    out.extend(_risk_lines(report["riesgo"]))
+    out.append("=" * WIDTH)
+    return "\n".join(out)
 
 
 # ------------------------------------------------------------------- JSON
@@ -173,6 +227,11 @@ def _html_kv_table(data, keys=None):
     return "<table class='kv'>" + "".join(rows) + "</table>"
 
 
+def _html_pairs_table(pairs):
+    rows = "".join(f"<tr><th>{_esc(k)}</th><td>{_esc(v)}</td></tr>" for k, v in pairs)
+    return f"<table class='kv'>{rows}</table>"
+
+
 def _html_findings(hallazgos):
     if not hallazgos:
         return "<p class='ok'>Sin hallazgos.</p>"
@@ -188,51 +247,38 @@ def _html_findings(hallazgos):
             "<th>Titulo</th><th>Detalle</th></tr>" + "".join(rows) + "</table>")
 
 
-def build_html(report):
+_HTML_CSS = """
+  body { font-family: 'Segoe UI', Arial, sans-serif; margin: 0; background: #0f1117; color: #e6e6e6; }
+  .container { max-width: 1000px; margin: 0 auto; padding: 30px; }
+  h1 { color: #00d4ff; border-bottom: 2px solid #00d4ff; padding-bottom: 10px; }
+  h2 { color: #00d4ff; margin-top: 35px; }
+  .meta { color: #9aa0a6; font-size: 0.9em; }
+  .risk { display: inline-block; padding: 14px 26px; border-radius: 10px; font-size: 1.3em;
+          font-weight: bold; color: #fff; background: __RISK__; }
+  .score { font-size: 1.1em; margin-left: 16px; color: #cfcfcf; }
+  table { border-collapse: collapse; width: 100%; margin-top: 12px; }
+  th, td { border: 1px solid #2a2f3a; padding: 8px 10px; text-align: left; font-size: 0.92em; }
+  table.kv th { width: 220px; background: #171b24; color: #00d4ff; }
+  table.kv td { background: #12151d; word-break: break-all; }
+  .findings th { background: #171b24; color: #00d4ff; }
+  .badge { display: inline-block; padding: 3px 8px; border-radius: 4px; color: #fff;
+           font-size: 0.78em; font-weight: bold; min-width: 70px; text-align: center; }
+  .ok { color: #27ae60; }
+  ul.redirects li { margin: 6px 0; font-size: 0.9em; }
+  code { color: #ffb86c; }
+  footer { margin-top: 45px; color: #555a64; font-size: 0.8em; border-top: 1px solid #2a2f3a; padding-top: 14px; }
+"""
+
+
+def _html_doc(report, body):
     riesgo = report["riesgo"]
-    risk_color = HTML_SEVERITY.get(
-        "CRITICAL" if riesgo["nivel"] == "CRITICO" else
-        "HIGH" if riesgo["nivel"] == "ALTO" else
-        "MEDIUM" if riesgo["nivel"] == "MEDIO" else "OK", "#555"
-    )
-    red = report["red"]
-    http = report["http"]
-    tls = report["tls"]
-
-    redirects = ""
-    if http.get("redirecciones"):
-        rows = "".join(
-            f"<li><code>{_esc(h['estado'])}</code> {_esc(h['desde'])} &rarr; {_esc(h['a'])}</li>"
-            for h in http["redirecciones"]
-        )
-        redirects = f"<h2>Cadena de redirecciones</h2><ul class='redirects'>{rows}</ul>"
-
+    css = _HTML_CSS.replace("__RISK__", RISK_HTML.get(riesgo["nivel"], "#555"))
     return f"""<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<title>Informe de analisis de URL - {_esc(report['objetivo'])}</title>
-<style>
-  body {{ font-family: 'Segoe UI', Arial, sans-serif; margin: 0; background: #0f1117; color: #e6e6e6; }}
-  .container {{ max-width: 1000px; margin: 0 auto; padding: 30px; }}
-  h1 {{ color: #00d4ff; border-bottom: 2px solid #00d4ff; padding-bottom: 10px; }}
-  h2 {{ color: #00d4ff; margin-top: 35px; }}
-  .meta {{ color: #9aa0a6; font-size: 0.9em; }}
-  .risk {{ display: inline-block; padding: 14px 26px; border-radius: 10px; font-size: 1.3em;
-          font-weight: bold; color: #fff; background: {risk_color}; }}
-  .score {{ font-size: 1.1em; margin-left: 16px; color: #cfcfcf; }}
-  table {{ border-collapse: collapse; width: 100%; margin-top: 12px; }}
-  th, td {{ border: 1px solid #2a2f3a; padding: 8px 10px; text-align: left; font-size: 0.92em; }}
-  table.kv th {{ width: 220px; background: #171b24; color: #00d4ff; }}
-  table.kv td {{ background: #12151d; word-break: break-all; }}
-  .findings th {{ background: #171b24; color: #00d4ff; }}
-  .badge {{ display: inline-block; padding: 3px 8px; border-radius: 4px; color: #fff;
-           font-size: 0.78em; font-weight: bold; min-width: 70px; text-align: center; }}
-  .ok {{ color: #27ae60; }}
-  ul.redirects li {{ margin: 6px 0; font-size: 0.9em; }}
-  code {{ color: #ffb86c; }}
-  footer {{ margin-top: 45px; color: #555a64; font-size: 0.8em; border-top: 1px solid #2a2f3a; padding-top: 14px; }}
-</style>
+<title>Informe {_esc(report['modulo'])} - {_esc(report['objetivo'])}</title>
+<style>{css}</style>
 </head>
 <body>
 <div class="container">
@@ -246,6 +292,28 @@ def build_html(report):
       {riesgo['total_hallazgos']} hallazgo(s)</span>
   </div>
 
+  {body}
+
+  <footer>Generado por PESTesting Suite &mdash; usar solo contra sistemas con autorizacion expresa.</footer>
+</div>
+</body>
+</html>"""
+
+
+def build_html(report):
+    red = report["red"]
+    http = report["http"]
+    tls = report["tls"]
+
+    redirects = ""
+    if http.get("redirecciones"):
+        rows = "".join(
+            f"<li><code>{_esc(h['estado'])}</code> {_esc(h['desde'])} &rarr; {_esc(h['a'])}</li>"
+            for h in http["redirecciones"]
+        )
+        redirects = f"<h2>Cadena de redirecciones</h2><ul class='redirects'>{rows}</ul>"
+
+    body = f"""
   <h2>Estructura de la URL</h2>
   {_html_kv_table(report['estructura'], ['url_normalizada', 'esquema', 'host', 'puerto',
     'ruta', 'query', 'fragmento', 'usuario', 'parametros', 'etiquetas_host',
@@ -259,17 +327,42 @@ def build_html(report):
   {f"<h2>TLS / Certificado</h2>" + _html_kv_table(tls, ['protocolo', 'cifrado', 'emisor', 'sujeto', 'expira', 'num_san']) if tls.get('enabled') else ""}
 
   <h2>Hallazgos</h2>
-  {_html_findings(report['hallazgos'])}
+  {_html_findings(report['hallazgos'])}"""
+    return _html_doc(report, body)
 
-  <footer>Generado por PESTesting Suite &mdash; usar solo contra sistemas con autorizacion expresa.</footer>
-</div>
-</body>
-</html>"""
+
+def build_scan_html(report):
+    abiertos = report.get("puertos_abiertos", [])
+    if abiertos:
+        rows = "".join(
+            f"<tr><td>{_esc(e['puerto'])}</td><td>{_esc(e['servicio'])}</td>"
+            f"<td>{_esc(e['banner'] or '-')}</td></tr>"
+            for e in abiertos
+        )
+        ports_table = ("<table class='findings'><tr><th>Puerto</th><th>Servicio</th>"
+                       f"<th>Banner</th></tr>{rows}</table>")
+    else:
+        ports_table = "<p class='ok'>Ningún puerto abierto en el rango escaneado.</p>"
+
+    body = f"""
+  <h2>Resumen</h2>
+  {_html_pairs_table(report.get('resumen', []))}
+
+  <h2>Puertos abiertos ({len(abiertos)})</h2>
+  {ports_table}
+
+  <h2>Hallazgos</h2>
+  {_html_findings(report['hallazgos'])}"""
+    return _html_doc(report, body)
 
 
 def save_html(report, path):
+    if report.get("modulo_slug") == "portscan":
+        content = build_scan_html(report)
+    else:
+        content = build_html(report)
     with open(path, "w", encoding="utf-8") as fh:
-        fh.write(build_html(report))
+        fh.write(content)
     return path
 
 
@@ -277,12 +370,17 @@ def save_html(report, path):
 
 def save_report(report, output_dir, formats=("json", "html")):
     os.makedirs(output_dir, exist_ok=True)
-    host = report["estructura"].get("host") or "sin-host"
-    safe_host = re.sub(r"[^A-Za-z0-9.\-]+", "_", host)[:60]
+    host = (report.get("estructura") or {}).get("host")
+    if not host:
+        host = next((v for k, v in report.get("resumen", []) if k == "IP"), None)
+    if not host:
+        host = report.get("objetivo")
+    safe_host = re.sub(r"[^A-Za-z0-9.\-]+", "_", str(host))[:60] or "sin-host"
+    prefix = report.get("modulo_slug", "url")
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     paths = []
     if "json" in formats:
-        paths.append(save_json(report, os.path.join(output_dir, f"url_{safe_host}_{stamp}.json")))
+        paths.append(save_json(report, os.path.join(output_dir, f"{prefix}_{safe_host}_{stamp}.json")))
     if "html" in formats:
-        paths.append(save_html(report, os.path.join(output_dir, f"url_{safe_host}_{stamp}.html")))
+        paths.append(save_html(report, os.path.join(output_dir, f"{prefix}_{safe_host}_{stamp}.html")))
     return paths

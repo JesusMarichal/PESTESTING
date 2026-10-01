@@ -24,11 +24,9 @@ import urllib.request
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 
+from core import VERSION
 from core.config import get_settings
-
-RISK_POINTS = {"CRITICAL": 25, "HIGH": 15, "MEDIUM": 8, "LOW": 4, "INFO": 1, "OK": 0}
-SEVERITIES = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO", "OK"]
-SEVERITY_ORDER = {name: idx for idx, name in enumerate(SEVERITIES)}
+from core.findings import Finding, SEVERITY_ORDER, compute_risk
 
 LEET_MAP = {
     "a": "a4@",
@@ -193,12 +191,13 @@ class URLAnalyzer:
                     tls = self._check_tls(net_host, port or 443)
 
         self.findings.sort(key=lambda f: SEVERITY_ORDER.get(f.severity, 99))
-        risk = self._compute_risk()
+        risk = compute_risk(self.findings, self.settings["risk_thresholds"])
 
         return {
             "tool": "PESTesting Suite",
             "modulo": "Analisis de URL",
-            "version": "0.1.0",
+            "modulo_slug": "url",
+            "version": VERSION,
             "objetivo": original,
             "fecha_analisis": analyzed_at.isoformat(),
             "modo": "offline (sin comprobaciones de red)" if self.offline else "completo",
@@ -545,26 +544,3 @@ class URLAnalyzer:
             self._add("tls", "Certificado sin Subject Alternative Names", "LOW",
                       "El certificado no declara SANs; los navegadores modernos requieren esta extensión.")
         return data
-
-    # ------------------------------------------------------------- riesgo
-
-    def _compute_risk(self):
-        thresholds = self.settings["risk_thresholds"]
-        total = sum(RISK_POINTS.get(f.severity, 0) for f in self.findings)
-        score = min(total, 100)
-        if score < thresholds["bajo"]:
-            level = "BAJO"
-        elif score < thresholds["medio"]:
-            level = "MEDIO"
-        elif score < thresholds["alto"]:
-            level = "ALTO"
-        else:
-            level = "CRITICO"
-
-        summary = {s: sum(1 for f in self.findings if f.severity == s) for s in SEVERITIES}
-        return {
-            "puntuacion": score,
-            "nivel": level,
-            "resumen": summary,
-            "total_hallazgos": len(self.findings),
-        }

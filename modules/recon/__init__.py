@@ -2,5 +2,6 @@
 """Módulos de reconocimiento y análisis pasivo/activo."""
 
 from modules.recon.url_analyzer import URLAnalyzer, Finding
+from modules.recon.port_scanner import PortScanner
 
-__all__ = ["URLAnalyzer", "Finding"]
+__all__ = ["URLAnalyzer", "PortScanner", "Finding"]
