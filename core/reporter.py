@@ -200,6 +200,119 @@ def print_scan_report(report, color=True):
     return "\n".join(out)
 
 
+# -------------------------------------------------------- consola subdominios
+
+def print_subdomain_report(report, color=True):
+    colors.set_enabled(color)
+    out = []
+    out.append(_header(f" {report['tool']} v{report['version']} | {report['modulo']}"))
+    out.append(_kv("Objetivo", report["objetivo"]))
+    out.append(_kv("Fecha", report["fecha_analisis"].replace("T", " ").split(".")[0]))
+    out.append(_kv("Modo", report["modo"]))
+
+    out.append(_section("RESUMEN"))
+    for key, value in report.get("resumen", []):
+        out.append(_kv(key, value))
+
+    subs = report.get("subdominios", [])
+    out.append(_section(f"SUBDOMINIOS DESCUBIERTOS ({len(subs)})"))
+    if not subs:
+        out.append("   Ninguno encontrado.")
+    else:
+        out.append(f"   {'SUBDOMINIO':<45} IPS")
+        for entry in subs:
+            ips = ", ".join(entry.get("ips", [])[:3])
+            out.append(f"   {entry['subdominio']:<45} {ips}")
+
+    hallazgos = report["hallazgos"]
+    out.append(_section(f"HALLAZGOS ({len(hallazgos)})"))
+    out.extend(_findings_lines(hallazgos))
+
+    out.append(_section("EVALUACION DE RIESGO"))
+    out.extend(_risk_lines(report["riesgo"]))
+    out.append("=" * WIDTH)
+    return "\n".join(out)
+
+
+# --------------------------------------------------------- consola dir busting
+
+def print_dirbust_report(report, color=True):
+    colors.set_enabled(color)
+    out = []
+    out.append(_header(f" {report['tool']} v{report['version']} | {report['modulo']}"))
+    out.append(_kv("Objetivo", report["objetivo"]))
+    out.append(_kv("Fecha", report["fecha_analisis"].replace("T", " ").split(".")[0]))
+    out.append(_kv("Modo", report["modo"]))
+
+    out.append(_section("RESUMEN"))
+    for key, value in report.get("resumen", []):
+        out.append(_kv(key, value))
+
+    rutas = report.get("rutas", [])
+    out.append(_section(f"RUTAS ENCONTRADAS ({len(rutas)})"))
+    if not rutas:
+        out.append("   Ninguna ruta encontrada.")
+    else:
+        out.append(f"   {'COD':>4}  {'RUTA':<40} CONTENT-TYPE")
+        for entry in rutas:
+            ct = (entry.get("content_type") or "-")[:30]
+            out.append(f"   {entry['codigo']:>4}  {entry['path']:<40} {ct}")
+
+    hallazgos = report["hallazgos"]
+    out.append(_section(f"HALLAZGOS ({len(hallazgos)})"))
+    out.extend(_findings_lines(hallazgos))
+
+    out.append(_section("EVALUACION DE RIESGO"))
+    out.extend(_risk_lines(report["riesgo"]))
+    out.append("=" * WIDTH)
+    return "\n".join(out)
+
+
+# ------------------------------------------------------ consola header/SSL
+
+def print_headerscan_report(report, color=True):
+    colors.set_enabled(color)
+    out = []
+    out.append(_header(f" {report['tool']} v{report['version']} | {report['modulo']}"))
+    out.append(_kv("Objetivo", report["objetivo"]))
+    out.append(_kv("Fecha", report["fecha_analisis"].replace("T", " ").split(".")[0]))
+    out.append(_kv("Modo", report["modo"]))
+
+    out.append(_section("RESUMEN"))
+    for key, value in report.get("resumen", []):
+        out.append(_kv(key, value))
+
+    tls = report.get("tls", {})
+    if tls.get("enabled") is not False and tls.get("protocolo"):
+        out.append(_section("TLS / CERTIFICADO"))
+        for key in ("protocolo", "cifrado", "bits_clave", "emisor",
+                    "sujeto", "expira", "dias_restantes", "num_san"):
+            out.append(_kv(key.replace("_", " "), tls.get(key)))
+        sans = tls.get("sans", [])
+        if sans:
+            out.append(_kv("SANs", ", ".join(sans[:8]) +
+                           (f" … (+{len(sans)-8}" if len(sans) > 8 else "")))
+
+    http = report.get("http", {})
+    if http.get("enabled"):
+        out.append(_section("CABECERAS HTTP"))
+        for h in ("Strict-Transport-Security", "Content-Security-Policy",
+                  "X-Frame-Options", "X-Content-Type-Options",
+                  "Referrer-Policy", "Permissions-Policy",
+                  "Access-Control-Allow-Origin", "Server", "X-Powered-By"):
+            val = (http.get("cabeceras") or {}).get(h) or "-"
+            out.append(_kv(h[:28], val[:60]))
+
+    hallazgos = report["hallazgos"]
+    out.append(_section(f"HALLAZGOS ({len(hallazgos)})"))
+    out.extend(_findings_lines(hallazgos))
+
+    out.append(_section("EVALUACION DE RIESGO"))
+    out.extend(_risk_lines(report["riesgo"]))
+    out.append("=" * WIDTH)
+    return "\n".join(out)
+
+
 # ------------------------------------------------------------------- JSON
 
 def save_json(report, path):
@@ -356,11 +469,99 @@ def build_scan_html(report):
     return _html_doc(report, body)
 
 
+def build_generic_html(report):
+    """HTML genérico para módulos con lista de items y hallazgos."""
+    slug = report.get("modulo_slug", "")
+    resumen_table = _html_pairs_table(report.get("resumen", []))
+
+    # Tabla de datos específica por módulo
+    data_section = ""
+    if slug == "subdomain":
+        subs = report.get("subdominios", [])
+        if subs:
+            rows = "".join(
+                f"<tr><td><code>{_esc(e['subdominio'])}</code></td>"
+                f"<td>{_esc(', '.join(e.get('ips', [])[:3]))}</td></tr>"
+                for e in subs
+            )
+            data_section = (
+                f"<h2>Subdominios descubiertos ({len(subs)})</h2>"
+                f"<table class='findings'><tr><th>Subdominio</th><th>IPs</th></tr>"
+                f"{rows}</table>"
+            )
+        else:
+            data_section = "<h2>Subdominios</h2><p class='ok'>Ninguno encontrado.</p>"
+
+    elif slug == "dirbust":
+        rutas = report.get("rutas", [])
+        if rutas:
+            rows = "".join(
+                f"<tr><td><strong>{_esc(e['codigo'])}</strong></td>"
+                f"<td><code>{_esc(e['path'])}</code></td>"
+                f"<td>{_esc(e.get('content_type') or '-')}</td>"
+                f"<td>{_esc(e.get('content_length') or '-')}</td></tr>"
+                for e in rutas
+            )
+            data_section = (
+                f"<h2>Rutas encontradas ({len(rutas)})</h2>"
+                f"<table class='findings'><tr><th>Código</th><th>Ruta</th>"
+                f"<th>Content-Type</th><th>Tamaño</th></tr>{rows}</table>"
+            )
+        else:
+            data_section = "<h2>Rutas</h2><p class='ok'>Ninguna ruta encontrada.</p>"
+
+    elif slug == "headerscan":
+        tls = report.get("tls", {})
+        http = report.get("http", {})
+        tls_section = ""
+        if tls.get("protocolo"):
+            tls_section = (
+                f"<h2>TLS / Certificado</h2>"
+                + _html_kv_table(tls, ["protocolo", "cifrado", "bits_clave",
+                                       "emisor", "sujeto", "expira",
+                                       "dias_restantes", "num_san"])
+            )
+        hdrs = http.get("cabeceras") or {}
+        hdr_keys = [
+            "Strict-Transport-Security", "Content-Security-Policy",
+            "X-Frame-Options", "X-Content-Type-Options",
+            "Referrer-Policy", "Permissions-Policy",
+            "Cross-Origin-Opener-Policy", "Access-Control-Allow-Origin",
+            "Server", "X-Powered-By",
+        ]
+        hdr_rows = "".join(
+            f"<tr><th>{_esc(h)}</th><td>{_esc(hdrs.get(h) or '-')}</td></tr>"
+            for h in hdr_keys
+        )
+        headers_section = (
+            f"<h2>Cabeceras HTTP de Seguridad</h2>"
+            f"<table class='kv'>{hdr_rows}</table>"
+        ) if hdrs else ""
+        data_section = tls_section + headers_section
+
+    body = f"""
+  <h2>Resumen</h2>
+  {resumen_table}
+
+  {data_section}
+
+  <h2>Hallazgos</h2>
+  {_html_findings(report['hallazgos'])}"""
+    return _html_doc(report, body)
+
+
 def save_html(report, path):
-    if report.get("modulo_slug") == "portscan":
-        content = build_scan_html(report)
-    else:
-        content = build_html(report)
+
+    slug = report.get("modulo_slug", "url")
+    builders = {
+        "url":        build_html,
+        "portscan":   build_scan_html,
+        "subdomain":  build_generic_html,
+        "dirbust":    build_generic_html,
+        "headerscan": build_generic_html,
+    }
+    builder = builders.get(slug, build_generic_html)
+    content = builder(report)
     with open(path, "w", encoding="utf-8") as fh:
         fh.write(content)
     return path

@@ -15,6 +15,9 @@ import sys
 from core import colors, reporter
 from modules.recon.url_analyzer import URLAnalyzer
 from modules.recon.port_scanner import PortScanner, parse_ports
+from modules.recon.subdomain_enum import SubdomainEnumerator
+from modules.recon.dir_buster import DirBuster
+from modules.recon.header_scanner import HeaderSSLAnalyzer
 
 VERSION = "0.1.1"
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -72,6 +75,51 @@ def build_parser():
                         help="formato de informe a guardar (defecto: both)")
     p_scan.add_argument("--output-dir", default=os.path.join(BASE_DIR, "reports"),
                         help="directorio de salida de los informes")
+
+    # --- subcomando: subdomain ---
+    p_sub = sub.add_parser("subdomain", help="enumera subdominios por fuerza bruta DNS")
+    p_sub.add_argument("target", help="dominio objetivo (ej. ejemplo.com)")
+    p_sub.add_argument("--threads", type=int, default=50,
+                       help="hilos DNS concurrentes (defecto: 50)")
+    p_sub.add_argument("--timeout", type=float, default=3.0,
+                       help="timeout DNS por subdominio en segundos (defecto: 3)")
+    p_sub.add_argument("--no-color", action="store_true", help="desactiva los colores")
+    p_sub.add_argument("--no-save", action="store_true",
+                       help="no guarda informes en disco")
+    p_sub.add_argument("--format", choices=["json", "html", "both"], default="both",
+                       help="formato de informe a guardar (defecto: both)")
+    p_sub.add_argument("--output-dir", default=os.path.join(BASE_DIR, "reports"),
+                       help="directorio de salida de los informes")
+
+    # --- subcomando: dirbust ---
+    p_dir = sub.add_parser("dirbust", help="descubre rutas y directorios web ocultos")
+    p_dir.add_argument("target", help="URL o host objetivo (ej. https://ejemplo.com)")
+    p_dir.add_argument("--threads", type=int, default=40,
+                       help="hilos HTTP concurrentes (defecto: 40)")
+    p_dir.add_argument("--timeout", type=float, default=6.0,
+                       help="timeout HTTP por ruta en segundos (defecto: 6)")
+    p_dir.add_argument("--extensions", default="",
+                       help="extensiones extra a probar, separadas por comas (ej. php,asp,txt)")
+    p_dir.add_argument("--no-color", action="store_true", help="desactiva los colores")
+    p_dir.add_argument("--no-save", action="store_true",
+                       help="no guarda informes en disco")
+    p_dir.add_argument("--format", choices=["json", "html", "both"], default="both",
+                       help="formato de informe a guardar (defecto: both)")
+    p_dir.add_argument("--output-dir", default=os.path.join(BASE_DIR, "reports"),
+                       help="directorio de salida de los informes")
+
+    # --- subcomando: headerscan ---
+    p_hdr = sub.add_parser("headerscan", help="análisis profundo de SSL/TLS y cabeceras HTTP")
+    p_hdr.add_argument("target", help="URL o host objetivo (ej. https://ejemplo.com)")
+    p_hdr.add_argument("--timeout", type=float, default=8.0,
+                       help="timeout de red en segundos (defecto: 8)")
+    p_hdr.add_argument("--no-color", action="store_true", help="desactiva los colores")
+    p_hdr.add_argument("--no-save", action="store_true",
+                       help="no guarda informes en disco")
+    p_hdr.add_argument("--format", choices=["json", "html", "both"], default="both",
+                       help="formato de informe a guardar (defecto: both)")
+    p_hdr.add_argument("--output-dir", default=os.path.join(BASE_DIR, "reports"),
+                       help="directorio de salida de los informes")
     return parser
 
 
@@ -119,6 +167,56 @@ def cmd_scan(args):
     return 0
 
 
+def cmd_subdomain(args):
+    colors.set_enabled(not args.no_color)
+    enumerator = SubdomainEnumerator(
+        domain=args.target,
+        threads=args.threads,
+        timeout=args.timeout,
+    )
+    report = enumerator.enumerate()
+    print(reporter.print_subdomain_report(report, color=not args.no_color))
+    if not args.no_save:
+        formats = ("json", "html") if args.format == "both" else (args.format,)
+        paths = reporter.save_report(report, args.output_dir, formats=formats)
+        for path in paths:
+            print(colors.paint(f"   [informe] {path}", colors.C.GREEN))
+    return 0
+
+
+def cmd_dirbust(args):
+    colors.set_enabled(not args.no_color)
+    exts = [e.strip() for e in args.extensions.split(",") if e.strip()] \
+           if args.extensions else []
+    buster = DirBuster(
+        target=args.target,
+        threads=args.threads,
+        timeout=args.timeout,
+        extensions=exts,
+    )
+    report = buster.bust()
+    print(reporter.print_dirbust_report(report, color=not args.no_color))
+    if not args.no_save:
+        formats = ("json", "html") if args.format == "both" else (args.format,)
+        paths = reporter.save_report(report, args.output_dir, formats=formats)
+        for path in paths:
+            print(colors.paint(f"   [informe] {path}", colors.C.GREEN))
+    return 0
+
+
+def cmd_headerscan(args):
+    colors.set_enabled(not args.no_color)
+    analyzer = HeaderSSLAnalyzer(target=args.target, timeout=args.timeout)
+    report = analyzer.analyze()
+    print(reporter.print_headerscan_report(report, color=not args.no_color))
+    if not args.no_save:
+        formats = ("json", "html") if args.format == "both" else (args.format,)
+        paths = reporter.save_report(report, args.output_dir, formats=formats)
+        for path in paths:
+            print(colors.paint(f"   [informe] {path}", colors.C.GREEN))
+    return 0
+
+
 def main(argv=None):
     try:
         sys.stdout.reconfigure(encoding="utf-8")
@@ -139,6 +237,15 @@ def main(argv=None):
 
     if args.command == "scan":
         return cmd_scan(args)
+
+    if args.command == "subdomain":
+        return cmd_subdomain(args)
+
+    if args.command == "dirbust":
+        return cmd_dirbust(args)
+
+    if args.command == "headerscan":
+        return cmd_headerscan(args)
 
     parser.print_help()
     return 0
