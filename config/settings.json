@@ -1,0 +1,65 @@
+{
+  "shorteners": [
+    "bit.ly", "tinyurl.com", "goo.gl", "t.co", "ow.ly", "is.gd", "buff.ly",
+    "adf.ly", "bit.do", "cutt.ly", "rebrand.ly", "tiny.cc", "shorte.st",
+    "rb.gy", "s.id", "lnkd.in", "aka.ms", "v.gd", "soo.gd", "clck.ru", "u.to"
+  ],
+  "suspicious_tlds": [
+    "tk", "ml", "ga", "cf", "gq", "xyz", "top", "buzz", "click", "cam",
+    "cfd", "icu", "monster", "rest", "work", "link", "fit", "loan", "men",
+    "mom", "party", "review", "rsvp", "sbs", "quest", "cyou", "country",
+    "kim", "gdn", "su", "zip", "mov"
+  ],
+  "phishing_keywords": [
+    "login", "signin", "sign-in", "verify", "verification", "secure",
+    "security", "account", "update", "confirm", "banking", "webscr",
+    "password", "credential", "wallet", "invoice", "payment", "billing",
+    "unlock", "suspend", "suspended", "limited", "recovery", "support",
+    "helpdesk", "bonus", "gift", "prize", "winner", "claim", "urgent",
+    "alert", "authenticate", "validation"
+  ],
+  "known_brands": {
+    "google": "google.com",
+    "paypal": "paypal.com",
+    "microsoft": "microsoft.com",
+    "apple": "apple.com",
+    "amazon": "amazon.com",
+    "netflix": "netflix.com",
+    "facebook": "facebook.com",
+    "instagram": "instagram.com",
+    "whatsapp": "whatsapp.com",
+    "gmail": "gmail.com",
+    "outlook": "outlook.com",
+    "onedrive": "onedrive.com",
+    "dropbox": "dropbox.com",
+    "linkedin": "linkedin.com",
+    "twitter": "twitter.com",
+    "github": "github.com",
+    "steampowered": "steampowered.com",
+    "ebay": "ebay.com",
+    "bancosantander": "santander.com",
+    "bbva": "bbva.com",
+    "caixabank": "caixabank.es",
+    "mercadolibre": "mercadolibre.com"
+  },
+  "security_headers": [
+    "Strict-Transport-Security",
+    "Content-Security-Policy",
+    "X-Frame-Options",
+    "X-Content-Type-Options",
+    "Referrer-Policy",
+    "Permissions-Policy"
+  ],
+  "common_ports": [80, 443, 8080, 8443],
+  "standard_ports": [80, 443],
+  "request_headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "es-ES,es;q=0.9,en;q=0.8"
+  },
+  "risk_thresholds": {
+    "bajo": 20,
+    "medio": 45,
+    "alto": 70
+  }
+}

@@ -1,0 +1,3 @@
+# PESTesting Suite funciona solo con la libreria estandar de Python 3.8+.
+# No requiere dependencias externas en esta fase.
+# Las dependencias opcionales de futuros modulos se listaran aqui.
